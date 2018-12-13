@@ -70,7 +70,8 @@ optional arguments:
   --path PATH            S3 path to delete (e.g. bucket/path)
   --id ID                Your AWS access key ID (Optional)
   --key KEY              Your AWS secret access key (Optional)
-  --token                Your token. Typical in MFA (Optional)
+  --token TOKEN          Your token. Typical in MFA (Optional)
+  --profile PROFILE      The AWS Profile to use (Optional)
   --dryrun               Don't delete. Print what we would have deleted
   --quiet                Suprress all non-error output
   --batchsize BATCHSIZE  # of keys to batch delete (default 100)
@@ -78,7 +79,6 @@ optional arguments:
   --delbucket            If S3 path is a bucket path, delete the bucket also
   --region               The Region to use (Optional)
   --key                  The Region to use (Optional)
-  --profile              The AWS Profile to use (Optional)
 ```
 
 ## Changelog

@@ -40,6 +40,8 @@ def getArgs():
         help="Your AWS secret access key", required=False)
     parser.add_argument("--token",
         help="Your AWS access token", required=False)
+    parser.add_argument("--profile",
+        help="Your AWS user profile", required=False)
     parser.add_argument("--dryrun",
         help="Don't delete.  Print what we would have deleted",
         action='store_true')
@@ -97,7 +99,13 @@ def deleter(args, rmQueue, numThreads):
 
     bucket, path = args.path
 
-    resource = boto3.resource('s3')
+    # Create an S3 Resource
+    session = boto3.session.Session(profile_name=args.profile)
+    resource = session.resource('s3',
+    aws_access_key_id=args.id,
+    aws_secret_access_key=args.key,
+    aws_session_token=args.token,
+    region_name=args.region,)
     mybucket =  resource.Bucket(bucket)
 
     done = False
@@ -156,8 +164,12 @@ def lister(subDir):
         bucket, path = args.path
 
         # Create an S3 client
-        client = boto3.client('s3')
-
+        session = boto3.session.Session(profile_name=args.profile)
+        client = session.client('s3',
+        aws_access_key_id=args.id,
+        aws_secret_access_key=args.key,
+        aws_session_token=args.token,
+        region_name=args.region,)
         paginator = client.get_paginator('list_object_versions')
         page_iterator = paginator.paginate( Bucket=bucket, Prefix=subDir.key )
 
@@ -194,18 +206,24 @@ def main():
 
     bucket, path = args.path
 
-    resource = boto3.resource('s3')
+    session = boto3.session.Session(profile_name=args.profile)
+
+    resource = session.resource('s3')
 
     if ( not resource.Bucket( bucket ) in resource.buckets.all() ):
         logger.info("Bucket '%s' not found.  Exiting" % bucket)
         sys.exit(0)
 
-    logger.info("Deleting from bucket: %s, path: %s" % (bucket,path))
-
     # Create an S3 client
-    client = boto3.client('s3')
+    client = session.client('s3',
+    aws_access_key_id=args.id,
+    aws_secret_access_key=args.key,
+    aws_session_token=args.token,
+    region_name=args.region,)
 
     mybucket =  resource.Bucket(bucket)
+
+    logger.info("Deleting from bucket: %s, path: %s" % (bucket,path))
 
 #TODO Figure out if I need to port this...    mybucket.configure_versioning(True)
 
