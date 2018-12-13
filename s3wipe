@@ -158,17 +158,19 @@ def lister(subDir):
         # Create an S3 client
         client = boto3.client('s3')
 
+        paginator = client.get_paginator('list_object_versions')
+        page_iterator = paginator.paginate( Bucket=bucket, Prefix=subDir.key )
+
         # Iterate through bucket and enqueue all keys found in
         # our deletion queue
-        versions = client.list_object_versions(Bucket=bucket, Prefix=subDir.key )
-        logger.info("Is Truncated:  %s" % versions.get('IsTruncated') )
-
-        for version_list in versions.get('Versions'):
-            aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
-            logger.debug("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
-            rmQueue.put( aFileThing )
-            with keysFound.get_lock():
-                keysFound.value += 1
+#        versions = client.list_object_versions(Bucket=bucket, Prefix=subDir.key )
+        for page in page_iterator:
+            for version_list in page.get('Versions'):
+                aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
+                logger.debug("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
+                rmQueue.put( aFileThing )
+                with keysFound.get_lock():
+                    keysFound.value += 1
     except:
         print("Error in Lister:", sys.exc_info()[0])
 # Our main function
@@ -191,11 +193,17 @@ def main():
     keysDeleted = multiprocessing.Value("i",0)
 
     bucket, path = args.path
+
+    resource = boto3.resource('s3')
+
+    if ( not resource.Bucket( bucket ) in resource.buckets.all() ):
+        logger.info("Bucket '%s' not found.  Exiting" % bucket)
+        sys.exit(0)
+
     logger.info("Deleting from bucket: %s, path: %s" % (bucket,path))
 
     # Create an S3 client
     client = boto3.client('s3')
-    resource = boto3.resource('s3')
 
     mybucket =  resource.Bucket(bucket)
 
@@ -203,28 +211,28 @@ def main():
 
     # Poll the root-level directories in the s3 bucket, and
     # start a reader process for each one of them
-    versions = None
 
-    if ( path ):
-        versions = client.list_object_versions (Bucket = bucket, Delimiter='/', Prefix = path)
-    else:
-        versions = client.list_object_versions (Bucket = bucket, Delimiter='/' )
+    paginator = client.get_paginator('list_object_versions')
+    page_iterator = paginator.paginate( Bucket=bucket, Delimiter='/', Prefix = ( path  or '' ) )
 
-    if ( not versions ):
-        logger.info("Nothing To do.  Exiting")
-        sys.exit(0)
+#    versions = client.list_object_versions (Bucket = bucket, Delimiter='/', Prefix = path)
 
-    version_list = versions.get('Versions')
+    for page in page_iterator:
+        if ( not page ):
+            logger.info("Nothing To do.  Exiting")
+            sys.exit(0)
 
-    subDirs = list()
-    for version in version_list or []:
-        aFileThing = file( version.get('Key'), version.get('VersionId') )
-        subDirs.append( aFileThing )
+        version_list = page.get('Versions')
 
-    common_prefix_list = versions.get('CommonPrefixes')
-    for prefix in common_prefix_list or []:
-        aFileThing = file( prefix.get('Prefix'), None )
-        subDirs.append( aFileThing )
+        subDirs = list()
+        for version in version_list or []:
+            aFileThing = file( version.get('Key'), version.get('VersionId') )
+            subDirs.append( aFileThing )
+
+        common_prefix_list = page.get('CommonPrefixes')
+        for prefix in common_prefix_list or []:
+            aFileThing = file( prefix.get('Prefix'), None )
+            subDirs.append( aFileThing )
 
     listThreads = len(subDirs)
     deleteThreads = listThreads*2
@@ -254,7 +262,8 @@ def main():
     logger.info("Done deleting keys")
 
     if args.delbucket and path is None:
-        if list( client.list_object_versions(Bucket=bucket,Delimiter="/" ) ):
+        anythingLeft = client.list_object_versions(Bucket=bucket,Delimiter="/" )
+        if ( anythingLeft.get( 'Versions') or anythingLeft.get( 'CommonPrefixes') ):
             logger.info("Bucket not empty.  Not removing (this can happen "  +
                 "when deleting large amounts of files.  It sometimes takes " +
                 "the S3 service a while (minutes to days) to catch up.")
