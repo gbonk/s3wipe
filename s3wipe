@@ -161,6 +161,8 @@ def lister(subDir):
         # Iterate through bucket and enqueue all keys found in
         # our deletion queue
         versions = client.list_object_versions(Bucket=bucket, Prefix=subDir.key )
+        logger.info("Is Truncated:  %s" % versions.get('IsTruncated') )
+
         for version_list in versions.get('Versions'):
             aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
             logger.debug("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
@@ -262,7 +264,7 @@ def main():
                 logger.info("Bucket is empty.  Would have removed bucket")
             else:
                 logger.info("Bucket is empty.  Attempting to remove bucket")
-                conn.delete_bucket(mybucket)
+                mybucket.delete()
 
 if __name__ == "__main__":
     main()
