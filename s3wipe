@@ -33,11 +33,13 @@ def getArgs():
             argparse.HelpFormatter(prog,max_help_position=27))
 
     parser.add_argument("--path", type=s3Path,
-        help="S3 path to delete (e.g. s3://bucket/path)", required=True)
+        help="S3 path to delete (e.g. bucket/path)", required=True)
     parser.add_argument("--id",
         help="Your AWS access key ID", required=False)
     parser.add_argument("--key",
         help="Your AWS secret access key", required=False)
+    parser.add_argument("--token",
+        help="Your AWS access token", required=False)
     parser.add_argument("--dryrun",
         help="Don't delete.  Print what we would have deleted",
         action='store_true')
@@ -95,24 +97,14 @@ def deleter(args, rmQueue, numThreads):
 
     bucket, path = args.path
 
-    # Create an S3 client
-    client = boto3.client('s3')
     resource = boto3.resource('s3')
-
     mybucket =  resource.Bucket(bucket)
 
     done = False
     rmKeys = []
-    toDelete = {}
 
-    do_while = True
-    counter = 0;
+    while True:
 
-    while do_while:
-
-        counter += 1
-
-        do_while =  ( counter < 100 )
         # Snatch a key off our deletion queue and add it
         # to our local deletion list
         rmKey = rmQueue.get()
@@ -130,16 +122,13 @@ def deleter(args, rmQueue, numThreads):
             try:
                 if args.dryrun:
                     for key in rmKeys:
-                        logger.info("Would have deleted '%s'" % key.key)
+                        logger.info("Would have deleted '%s'" % key['Key'])
                 else:
-#                    mybucket.delete_keys(rmKeys)
                     jsonstring = { "Objects": rmKeys }
-                    logger.info("%s" % json.dumps( jsonstring ) )
+                    logger.debug("%s" % json.dumps( jsonstring ) )
                     mybucket.delete_objects(Delete = jsonstring )
-
             except:
-                print("Unexpected error:", sys.exc_info()[0])
-#                continue
+                print("Error in deleter:", sys.exc_info()[0])
 
             with keysDeleted.get_lock():
                 keysDeleted.value += len(rmKeys)
@@ -162,28 +151,24 @@ def listInit(arg1, arg2):
 # insert all objects found into the deletion queue.
 def lister(subDir):
 
-    logger.info("Created Lister for %s ", subDir)
+    try:
 
-    bucket, path = args.path
+        bucket, path = args.path
 
-    # Create an S3 client
-    client = boto3.client('s3')
-#    resource = boto3.resource('s3')
-#    mybucket =  resource.Bucket(bucket)
+        # Create an S3 client
+        client = boto3.client('s3')
 
-
-
-    # Iterate through bucket and enqueue all keys found in
-    # our deletion queue
-#    for key in mybucket.list_versions(prefix=subDir.name):
-    versions = client.list_object_versions(Bucket=bucket, Prefix=subDir.key )
-    for version_list in versions.get('Versions'):
-        aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
-        logger.info("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
-        rmQueue.put( aFileThing )
-        with keysFound.get_lock():
-            keysFound.value += 1
-
+        # Iterate through bucket and enqueue all keys found in
+        # our deletion queue
+        versions = client.list_object_versions(Bucket=bucket, Prefix=subDir.key )
+        for version_list in versions.get('Versions'):
+            aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
+            logger.debug("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
+            rmQueue.put( aFileThing )
+            with keysFound.get_lock():
+                keysFound.value += 1
+    except:
+        print("Error in Lister:", sys.exc_info()[0])
 # Our main function
 def main():
 
@@ -205,10 +190,6 @@ def main():
 
     bucket, path = args.path
     logger.info("Deleting from bucket: %s, path: %s" % (bucket,path))
-    logger.info("Getting subdirs to feed to list threads")
-
-
-    logger.info("Using Bucket:  " + bucket )
 
     # Create an S3 client
     client = boto3.client('s3')
@@ -220,39 +201,28 @@ def main():
 
     # Poll the root-level directories in the s3 bucket, and
     # start a reader process for each one of them
-#    subDirs = list(mybucket.list_versions(prefix=path, delimiter="/"))
-#    subDirs = list( client.list_object_versions(Bucket=bucket,Delimiter="/",Prefix=(str(path or '')) )['Versions'] )
     versions = None
-
-    logger.info("%s" % args.path[0])
-
 
     if ( path ):
         versions = client.list_object_versions (Bucket = bucket, Delimiter='/', Prefix = path)
     else:
         versions = client.list_object_versions (Bucket = bucket, Delimiter='/' )
 
-    version_list = versions.get('Versions')
-
-    if ( not version_list ):
+    if ( not versions ):
         logger.info("Nothing To do.  Exiting")
         sys.exit(0)
 
-
-    logger.info("Version List is Size: %s" % len(version_list))
+    version_list = versions.get('Versions')
 
     subDirs = list()
-    for version in version_list:
+    for version in version_list or []:
         aFileThing = file( version.get('Key'), version.get('VersionId') )
         subDirs.append( aFileThing )
 
     common_prefix_list = versions.get('CommonPrefixes')
-    for prefix in common_prefix_list:
+    for prefix in common_prefix_list or []:
         aFileThing = file( prefix.get('Prefix'), None )
-#        prefix_name = prefix.get('Prefix')
         subDirs.append( aFileThing )
-
-    logger.info("Initial List is Size: %s" % len(subDirs))
 
     listThreads = len(subDirs)
     deleteThreads = listThreads*2
@@ -282,7 +252,6 @@ def main():
     logger.info("Done deleting keys")
 
     if args.delbucket and path is None:
-#        if list(mybucket.list_versions(delimiter='/')):
         if list( client.list_object_versions(Bucket=bucket,Delimiter="/" ) ):
             logger.info("Bucket not empty.  Not removing (this can happen "  +
                 "when deleting large amounts of files.  It sometimes takes " +
