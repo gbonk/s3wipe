@@ -93,19 +93,36 @@ def loggerSetup(args):
     # Supress boto debug logging, since it is very chatty
     logging.getLogger("boto").setLevel(logging.CRITICAL)
 
+class AWSClientFactory():
+    # Create based on class name:
+    def getInstance(self,args):
+        # Create an S3 client
+        session = boto3.session.Session(profile_name=args.profile)
+        return session.client('s3',
+        aws_access_key_id=args.id,
+        aws_secret_access_key=args.key,
+        aws_session_token=args.token,
+        region_name=args.region,)
+    singelton = staticmethod(getInstance)
+
+class AWSResourceFactory():
+    # Create based on class name:
+    def getInstance(self,args):
+        # Create an S3 client
+        session = boto3.session.Session(profile_name=args.profile)
+        return session.resource('s3',
+        aws_access_key_id=args.id,
+        aws_secret_access_key=args.key,
+        aws_session_token=args.token,
+        region_name=args.region,)
+    singelton = staticmethod(getInstance)
 
 # Our deletion worker, called by Threadpool
 def deleter(args, rmQueue, numThreads):
 
     bucket, path = args.path
 
-    # Create an S3 Resource
-    session = boto3.session.Session(profile_name=args.profile)
-    resource = session.resource('s3',
-    aws_access_key_id=args.id,
-    aws_secret_access_key=args.key,
-    aws_session_token=args.token,
-    region_name=args.region,)
+    resource = AWSResourceFactory().getInstance(args)
     mybucket =  resource.Bucket(bucket)
 
     done = False
@@ -163,13 +180,8 @@ def lister(subDir):
 
         bucket, path = args.path
 
-        # Create an S3 client
-        session = boto3.session.Session(profile_name=args.profile)
-        client = session.client('s3',
-        aws_access_key_id=args.id,
-        aws_secret_access_key=args.key,
-        aws_session_token=args.token,
-        region_name=args.region,)
+        client = AWSClientFactory().getInstance(args)
+
         paginator = client.get_paginator('list_object_versions')
         page_iterator = paginator.paginate( Bucket=bucket, Prefix=subDir.key )
 
@@ -208,18 +220,13 @@ def main():
 
     session = boto3.session.Session(profile_name=args.profile)
 
-    resource = session.resource('s3')
+    client = AWSClientFactory().getInstance(args)
+    resource = AWSResourceFactory().getInstance(args)
 
     if ( not resource.Bucket( bucket ) in resource.buckets.all() ):
         logger.info("Bucket '%s' not found.  Exiting" % bucket)
         sys.exit(0)
 
-    # Create an S3 client
-    client = session.client('s3',
-    aws_access_key_id=args.id,
-    aws_secret_access_key=args.key,
-    aws_session_token=args.token,
-    region_name=args.region,)
 
     mybucket =  resource.Bucket(bucket)
 
