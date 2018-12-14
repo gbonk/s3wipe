@@ -6,7 +6,7 @@ from multiprocessing.pool import ThreadPool
 import boto3
 import json
 
-version = "0.0.1"
+version = "0.0.2"
 
 class file:
     def __init__(self, key, version):

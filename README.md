@@ -39,7 +39,7 @@ a semi-recent version of the "boto3" python module to be installed, though, so:
 
 Then:
 
-    wget https://raw.github.com/eschwim/s3wipe/master/s3wipe
+    wget https://raw.github.com/gbonk/s3wipe/master/
     chmod 755 s3wipe
 
 ### Using Docker (TODO)
@@ -49,11 +49,11 @@ Clone the repo:
     git clone git@github.com:gbonk/s3wipe.git
     cd s3wipe
 
-Build the Docker image:
+TODO Build the Docker image:
 
     docker build -t s3wipe:latest .
 
-Then run the script:
+TODO Then run the script:
 
     docker run s3wipe:latest --help
 
@@ -70,18 +70,21 @@ optional arguments:
   --path PATH            S3 path to delete (e.g. bucket/path)
   --id ID                Your AWS access key ID (Optional)
   --key KEY              Your AWS secret access key (Optional)
-  --token TOKEN          Your token. Typical in MFA (Optional)
+  --token TOKEN          Your AWS session token. Typical in MFA (Optional)
   --profile PROFILE      The AWS Profile to use (Optional)
+  --region REGION        The Region to use (Optional)
   --dryrun               Don't delete. Print what we would have deleted
-  --quiet                Suprress all non-error output
+  --quiet                Suppress all non-error output
   --batchsize BATCHSIZE  # of keys to batch delete (default 100)
   --maxqueue MAXQUEUE    Max size of deletion queue (default 10k)
   --delbucket            If S3 path is a bucket path, delete the bucket also
-  --region               The Region to use (Optional)
-  --key                  The Region to use (Optional)
 ```
 
 ## Changelog
+
+_v0.0.2_
+
+    Added the additional options for connecting via region, using keys, etc and moved the code into a factory
 
 _v0.0.1_
 
