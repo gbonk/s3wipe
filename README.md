@@ -74,7 +74,8 @@ optional arguments:
   --profile PROFILE      The AWS Profile to use (Optional)
   --region REGION        The Region to use (Optional)
   --dryrun               Don't delete. Print what we would have deleted
-  --quiet                Suppress all non-error output
+  --quiet                Suppress all output
+  --verbose              Enable debug logging
   --batchsize BATCHSIZE  # of keys to batch delete (default 100)
   --maxqueue MAXQUEUE    Max size of deletion queue (default 10k)
   --delbucket            If S3 path is a bucket path, delete the bucket also
@@ -82,9 +83,14 @@ optional arguments:
 
 ## Changelog
 
-_v0.0.2_
+_v0.0.3_
 
-    Added the additional options for connecting via region, using keys, etc and moved the code into a factory
+    Added elapsed Time
+    Added 'debug' flag and changed 'behavior' of quiet flag
+
+  _v0.0.2_
+
+      Added the additional options for connecting via region, using keys, etc and moved the code into a factory
 
 _v0.0.1_
 

@@ -5,8 +5,9 @@ import multiprocessing, signal, re
 from multiprocessing.pool import ThreadPool
 import boto3
 import json
+import time
 
-version = "0.0.2"
+version = "0.0.3"
 
 class file:
     def __init__(self, key, version):
@@ -46,7 +47,9 @@ def getArgs():
         help="Don't delete.  Print what we would have deleted",
         action='store_true')
     parser.add_argument("--quiet",
-        help="Suprress all non-error output", action='store_true')
+        help="Suprress all output", action='store_true')
+    parser.add_argument("--verbose",
+        help="Enable debug logging. Overrides 'quiet'", action='store_true')
     parser.add_argument("--batchsize",
         help="# of keys to batch delete (default 100)",
         type=int, default=100)
@@ -70,7 +73,9 @@ def getArgs():
 def loggerSetup(args):
 
     # Set our maximum severity level to log (i.e. debug or not)
-    if args.quiet:
+    if args.verbose:
+        logLevel = logging.DEBUG
+    elif args.quiet:
         logLevel = logging.ERROR
     else:
         logLevel = logging.INFO
@@ -176,8 +181,6 @@ def listInit(arg1, arg2):
 # insert all objects found into the deletion queue.
 def lister(subDir):
 
-    try:
-
         bucket, path = args.path
 
         client = AWSClientFactory().getInstance(args)
@@ -187,16 +190,22 @@ def lister(subDir):
 
         # Iterate through bucket and enqueue all keys found in
         # our deletion queue
-#        versions = client.list_object_versions(Bucket=bucket, Prefix=subDir.key )
         for page in page_iterator:
-            for version_list in page.get('Versions'):
+
+            for version_list in ( page.get('Versions') or []):
                 aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
                 logger.debug("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
                 rmQueue.put( aFileThing )
                 with keysFound.get_lock():
                     keysFound.value += 1
-    except:
-        print("Error in Lister:", sys.exc_info()[0])
+
+            for version_list in ( page.get('DeleteMarkers') or []):
+                aFileThing = file( version_list.get('Key'), version_list.get('VersionId') )
+                logger.debug("Listing Path: %s; Key: %s" % (subDir.key ,aFileThing.key))
+                rmQueue.put( aFileThing )
+                with keysFound.get_lock():
+                    keysFound.value += 1
+
 # Our main function
 def main():
 
@@ -240,16 +249,14 @@ def main():
     paginator = client.get_paginator('list_object_versions')
     page_iterator = paginator.paginate( Bucket=bucket, Delimiter='/', Prefix = ( path  or '' ) )
 
-#    versions = client.list_object_versions (Bucket = bucket, Delimiter='/', Prefix = path)
-
     for page in page_iterator:
         if ( not page ):
             logger.info("Nothing To do.  Exiting")
             sys.exit(0)
 
-        version_list = page.get('Versions')
-
         subDirs = list()
+
+        version_list = page.get('Versions')
         for version in version_list or []:
             aFileThing = file( version.get('Key'), version.get('VersionId') )
             subDirs.append( aFileThing )
@@ -257,6 +264,11 @@ def main():
         common_prefix_list = page.get('CommonPrefixes')
         for prefix in common_prefix_list or []:
             aFileThing = file( prefix.get('Prefix'), None )
+            subDirs.append( aFileThing )
+
+        delete_markers = page.get('DeleteMarkers')
+        for marker in delete_markers or []:
+            aFileThing = file( marker.get('Key'), marker.get('VersionId') )
             subDirs.append( aFileThing )
 
     listThreads = len(subDirs)
@@ -288,7 +300,7 @@ def main():
 
     if args.delbucket and path is None:
         anythingLeft = client.list_object_versions(Bucket=bucket,Delimiter="/" )
-        if ( anythingLeft.get( 'Versions') or anythingLeft.get( 'CommonPrefixes') ):
+        if ( anythingLeft.get( 'Versions') or anythingLeft.get( 'CommonPrefixes') or anythingLeft.get( 'DeleteMarkers') ):
             logger.info("Bucket not empty.  Not removing (this can happen "  +
                 "when deleting large amounts of files.  It sometimes takes " +
                 "the S3 service a while (minutes to days) to catch up.")
@@ -301,4 +313,11 @@ def main():
                 mybucket.delete()
 
 if __name__ == "__main__":
+
+    start_time = time.time()
+
     main()
+
+    elapsed_time = time.time() - start_time
+
+    print( time.strftime("Time Elapsed:  %H:%M:%S", time.gmtime(elapsed_time)) )
